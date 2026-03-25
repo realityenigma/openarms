@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            fastapi==0.109.0 uvicorn==0.27.0 pydantic==2.5.3 pydantic-settings==2.1.0 \
+            sqlalchemy==2.0.23 psycopg2-binary==2.9.9 python-multipart==0.0.6 \
+            python-jose==3.3.0 passlib==1.7.4 bcrypt==4.1.1 gitpython==3.1.40 \
+            requests==2.31.0 aiofiles==23.2.1 email-validator==2.1.0.post1 \
+            pytest==7.4.3 httpx==0.25.2
+      - name: Backend compile check
+        run: |
+          python -m py_compile backend/armswideopen/main.py backend/armswideopen/api/*.py backend/armswideopen/services/*.py backend/armswideopen/db/*.py backend/armswideopen/schemas/*.py backend/armswideopen/sdk.py backend/armswideopen/cli.py
+      - name: Run backend tests
+        run: |
+          PYTHONPATH=backend python -m pytest -q backend/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm ci
+      - name: Frontend build
+        run: |
+          cd frontend
+          npm run build
+      - name: Install Playwright browsers
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+      - name: Frontend browser E2E
+        run: |
+          cd frontend
+          npm run test:e2e
+
+  git-lfs-smoke:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install server deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            fastapi==0.109.0 uvicorn==0.27.0 pydantic==2.5.3 pydantic-settings==2.1.0 \
+            sqlalchemy==2.0.23 psycopg2-binary==2.9.9 python-multipart==0.0.6 \
+            python-jose==3.3.0 passlib==1.7.4 bcrypt==4.1.1 gitpython==3.1.40 \
+            requests==2.31.0 aiofiles==23.2.1 email-validator==2.1.0.post1
+      - name: Install git-lfs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-lfs
+          git lfs install
+      - name: Start backend
+        run: |
+          nohup env PYTHONPATH=backend python -m uvicorn armswideopen.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not start" && cat server.log && exit 1
+      - name: Seed user and model
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8000/api/v1/users/register \
+            -H 'content-type: application/json' \
+            -d '{"username":"alice","email":"alice@example.com","password":"password123","full_name":"Alice"}' >/dev/null
+          TOKEN=$(curl -fsS -X POST http://127.0.0.1:8000/api/v1/users/login \
+            -H 'content-type: application/json' \
+            -d '{"username":"alice","password":"password123"}' | python -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+          curl -fsS -X POST http://127.0.0.1:8000/api/v1/models \
+            -H "authorization: Bearer $TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"model_id":"alice/cli-lfs","name":"cli-lfs","description":"lfs smoke","model_type":"other","tags":"ci,lfs","is_private":false}' >/dev/null
+          echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - name: git-lfs smoke upload/download
+        run: |
+          set -e
+          mkdir repo && cd repo
+          git init
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+          git remote add origin http://127.0.0.1:8000/alice/cli-lfs
+          git config http.https://127.0.0.1:8000/.extraheader "Authorization: Bearer $TOKEN"
+          git lfs track "*.bin"
+          echo "*.bin filter=lfs diff=lfs merge=lfs -text" > .gitattributes
+          dd if=/dev/urandom of=weights.bin bs=1024 count=4
+          git add .gitattributes weights.bin
+          git commit -m "add lfs object"
+          git lfs push origin --all

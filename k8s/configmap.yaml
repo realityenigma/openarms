@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: armswideopen-config
+  namespace: armswideopen
+data:
+  APP_NAME: "OpenArms"
+  APP_VERSION: "0.1.0"
+  API_VERSION: "0.1.0"
+  DEBUG: "False"
+  STORAGE_PATH: "/app/storage"
+  CORS_ORIGINS: "[\"*\"]"
+  CORS_ALLOW_CREDENTIALS: "True"
+  CORS_ALLOW_METHODS: "[\"*\"]"
+  CORS_ALLOW_HEADERS: "[\"*\"]"
+  DATABASE_URL: "postgresql://armswideopen:armswideopen_dev@postgres:5432/armswideopen"

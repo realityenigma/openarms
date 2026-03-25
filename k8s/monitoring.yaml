@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: armswideopen-backend-monitor
+  namespace: armswideopen
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: armswideopen-backend
+  namespaceSelector:
+    matchNames:
+      - armswideopen
+  endpoints:
+    - port: http
+      path: /health
+      interval: 30s

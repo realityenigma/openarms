@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: armswideopen-frontend
+  namespace: armswideopen
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: armswideopen-frontend
+  template:
+    metadata:
+      labels:
+        app: armswideopen-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/your-org/armswideopen-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: armswideopen-frontend
+  namespace: armswideopen
+spec:
+  selector:
+    app: armswideopen-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

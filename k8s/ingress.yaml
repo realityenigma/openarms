@@ -1,0 +1,69 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: armswideopen-ingress
+  namespace: armswideopen
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2g"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: armswideopen.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /.+\\.git/.*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /.+/resolve/.+/.+
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /openapi.json
+            pathType: Exact
+            backend:
+              service:
+                name: armswideopen-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: armswideopen-frontend
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - armswideopen.example.com
+      secretName: armswideopen-tls
